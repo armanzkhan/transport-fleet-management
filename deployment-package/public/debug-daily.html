@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Daily Cashbook Debug</title>
+    <script>
+        window.onload = function() {
+            console.log('Window loaded');
+            
+            // Check if the page has loaded
+            fetch('/cash-books/daily')
+                .then(response => response.text())
+                .then(html => {
+                    console.log('Daily page loaded successfully');
+                    
+                    // Check if templates exist in the HTML
+                    const tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = html;
+                    
+                    const receiveTemplate = tempDiv.querySelector('#receiveTemplate');
+                    const paymentTemplate = tempDiv.querySelector('#paymentTemplate');
+                    const addReceiveBtn = tempDiv.querySelector('#addReceive');
+                    const addPaymentBtn = tempDiv.querySelector('#addPayment');
+                    
+                    console.log('Receive template found:', !!receiveTemplate);
+                    console.log('Payment template found:', !!paymentTemplate);
+                    console.log('Add Receive button found:', !!addReceiveBtn);
+                    console.log('Add Payment button found:', !!addPaymentBtn);
+                    
+                    if (addReceiveBtn) {
+                        console.log('Add Receive onclick:', addReceiveBtn.getAttribute('onclick'));
+                    }
+                    if (addPaymentBtn) {
+                        console.log('Add Payment onclick:', addPaymentBtn.getAttribute('onclick'));
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading daily page:', error);
+                });
+        };
+    </script>
+</head>
+<body>
+    <h1>Daily Cashbook Debug Test</h1>
+    <p>Check console for debug information</p>
+</body>
+</html>
