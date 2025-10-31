@@ -18,6 +18,10 @@
                     <i class="fas fa-print me-2"></i>
                     Print
                 </a>
+                <a href="{{ route('vehicle-billing.export-word', $vehicleBill) }}" class="btn btn-outline-primary me-2">
+                    <i class="fas fa-file-word me-2"></i>
+                    Export Word
+                </a>
                 @endcan
                 @if(!$vehicleBill->is_finalized)
                 @can('finalize-vehicle-billing')
@@ -31,6 +35,76 @@
                 </form>
                 @endcan
                 @endif
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Billing Reports Tabs (SRS 1.24 & 1.25) -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white">
+        <ul class="nav nav-tabs card-header-tabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="bill-tab" data-bs-toggle="tab" data-bs-target="#bill-content" 
+                        type="button" role="tab" aria-controls="bill-content" aria-selected="true">
+                    <i class="fas fa-file-invoice-dollar me-2"></i>
+                    Bill Details
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="pending-trips-tab" data-bs-toggle="tab" data-bs-target="#pending-trips-content" 
+                        type="button" role="tab" aria-controls="pending-trips-content" aria-selected="false">
+                    <i class="fas fa-clock me-2"></i>
+                    Pending Trips
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="outstanding-tab" data-bs-toggle="tab" data-bs-target="#outstanding-content" 
+                        type="button" role="tab" aria-controls="outstanding-content" aria-selected="false">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Outstanding Advances/Expenses
+                </button>
+            </li>
+        </ul>
+    </div>
+    <div class="card-body">
+        <div class="tab-content" id="billingTabsContent">
+            <div class="tab-pane fade show active" id="bill-content" role="tabpanel" aria-labelledby="bill-tab">
+                <!-- Bill content moved here -->
+            </div>
+            <div class="tab-pane fade" id="pending-trips-content" role="tabpanel" aria-labelledby="pending-trips-tab">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0">Pending and Unprocessed Trips</h5>
+                    <a href="{{ route('reports.pending-trips', ['vrn' => $vehicleBill->vehicle->vrn]) }}" 
+                       class="btn btn-outline-primary btn-sm" target="_blank">
+                        <i class="fas fa-external-link-alt me-2"></i>
+                        View Full Report
+                    </a>
+                </div>
+                <p class="text-muted">This shows trips that are ready for billing but not yet attached to any bill.</p>
+                <div id="pending-trips-data" class="mt-3">
+                    <div class="text-center py-4">
+                        <i class="fas fa-spinner fa-spin fa-2x text-muted mb-3"></i>
+                        <p class="text-muted">Loading pending trips...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="tab-pane fade" id="outstanding-content" role="tabpanel" aria-labelledby="outstanding-tab">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0">Outstanding Advances and Expenses</h5>
+                    <a href="{{ route('reports.outstanding-advances', ['vrn' => $vehicleBill->vehicle->vrn]) }}" 
+                       class="btn btn-outline-primary btn-sm" target="_blank">
+                        <i class="fas fa-external-link-alt me-2"></i>
+                        View Full Report
+                    </a>
+                </div>
+                <p class="text-muted">This shows advances and expenses that are not yet attached to any bill.</p>
+                <div id="outstanding-data" class="mt-3">
+                    <div class="text-center py-4">
+                        <i class="fas fa-spinner fa-spin fa-2x text-muted mb-3"></i>
+                        <p class="text-muted">Loading outstanding data...</p>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -360,4 +434,93 @@
         @endif
     </div>
 </div>
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Move bill details section into first tab
+    const billContentTab = document.getElementById('bill-content');
+    const billDetailsSection = document.getElementById('bill-details-section');
+    if (billContentTab && billDetailsSection) {
+        billContentTab.appendChild(billDetailsSection.cloneNode(true));
+        billDetailsSection.style.display = 'none';
+    }
+    
+    // Load pending trips when tab is clicked
+    document.getElementById('pending-trips-tab').addEventListener('shown.bs.tab', function() {
+        loadPendingTrips();
+    });
+    
+    // Load outstanding advances/expenses when tab is clicked
+    document.getElementById('outstanding-tab').addEventListener('shown.bs.tab', function() {
+        loadOutstandingData();
+    });
+    
+    function loadPendingTrips() {
+        const container = document.getElementById('pending-trips-data');
+        const vrn = '{{ $vehicleBill->vehicle->vrn }}';
+        
+        fetch(`{{ route('reports.pending-trips') }}?vrn=${encodeURIComponent(vrn)}`, {
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.html) {
+                container.innerHTML = data.html;
+            } else {
+                container.innerHTML = `
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        No pending trips found for this vehicle.
+                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            container.innerHTML = `
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Could not load pending trips. <a href="{{ route('reports.pending-trips', ['vrn' => $vehicleBill->vehicle->vrn]) }}" target="_blank">View full report</a>
+                </div>
+            `;
+        });
+    }
+    
+    function loadOutstandingData() {
+        const container = document.getElementById('outstanding-data');
+        const vrn = '{{ $vehicleBill->vehicle->vrn }}';
+        
+        fetch(`{{ route('reports.outstanding-advances') }}?vrn=${encodeURIComponent(vrn)}`, {
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.html) {
+                container.innerHTML = data.html;
+            } else {
+                container.innerHTML = `
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        No outstanding advances or expenses found for this vehicle.
+                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            container.innerHTML = `
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Could not load outstanding data. <a href="{{ route('reports.outstanding-advances', ['vrn' => $vehicleBill->vehicle->vrn]) }}" target="_blank">View full report</a>
+                </div>
+            `;
+        });
+    }
+});
+</script>
+@endpush
 @endsection

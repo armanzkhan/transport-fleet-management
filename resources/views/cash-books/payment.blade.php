@@ -82,6 +82,41 @@
                         </div>
                     </div>
 
+                    <!-- Apply to All Panel -->
+                    <div class="card border-info mb-3">
+                        <div class="card-header bg-info bg-opacity-10">
+                            <h6 class="mb-0">
+                                <i class="fas fa-magic me-2"></i>
+                                Apply to All (Existing Rows Only)
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row align-items-end">
+                                <div class="col-md-4">
+                                    <label class="form-label">Transaction Type</label>
+                                    <select class="form-select" id="applyTypeSelect">
+                                        <option value="">Select Type</option>
+                                        <option value="Advance">Advance</option>
+                                        <option value="Expense">Expense</option>
+                                        <option value="Shortage">Shortage</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <button type="button" class="btn btn-info" onclick="applyToAll()">
+                                        <i class="fas fa-check-double me-2"></i>
+                                        Apply to All Existing Rows
+                                    </button>
+                                </div>
+                                <div class="col-md-4">
+                                    <small class="text-muted">
+                                        <i class="fas fa-info-circle me-1"></i>
+                                        This will apply the selected type to all existing rows only. New rows added afterward will not be affected.
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Transactions Table -->
                     <div class="card border-warning">
                         <div class="card-header bg-warning bg-gradient text-dark">
@@ -280,6 +315,55 @@ document.addEventListener('DOMContentLoaded', function() {
     function formatNumber(num) {
         return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
+    
+    // Apply to All function - applies selected transaction type to all existing rows only
+    window.applyToAll = function() {
+        const selectedType = document.getElementById('applyTypeSelect').value;
+        
+        if (!selectedType) {
+            alert('Please select a transaction type first.');
+            return;
+        }
+        
+        // Get all existing rows (not new ones added after this function runs)
+        const existingRows = document.querySelectorAll('#transactionsBody tr');
+        
+        if (existingRows.length === 0) {
+            alert('No existing rows to apply to. Please add transactions first.');
+            return;
+        }
+        
+        // Confirm with user
+        if (!confirm(`Are you sure you want to apply "${selectedType}" to all ${existingRows.length} existing row(s)?\n\nNote: This will only affect existing rows. New rows added afterward will not be affected.`)) {
+            return;
+        }
+        
+        // Apply the selected type to all existing rows
+        existingRows.forEach(row => {
+            const typeSelect = row.querySelector('select[name*="[payment_type]"]');
+            if (typeSelect) {
+                typeSelect.value = selectedType;
+                // Trigger change event if needed
+                typeSelect.dispatchEvent(new Event('change'));
+            }
+        });
+        
+        // Show success message
+        const notification = document.createElement('div');
+        notification.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+        notification.style.zIndex = '9999';
+        notification.innerHTML = `
+            <i class="fas fa-check-circle me-2"></i>
+            Applied "${selectedType}" to ${existingRows.length} existing row(s)!
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.body.appendChild(notification);
+        
+        // Auto-remove after 3 seconds
+        setTimeout(() => {
+            notification.remove();
+        }, 3000);
+    };
     
     // Form validation
     document.getElementById('paymentForm').addEventListener('submit', function(e) {

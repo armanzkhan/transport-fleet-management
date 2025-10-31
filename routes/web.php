@@ -182,6 +182,7 @@ Route::post('/cash-books/simple', [CashBookController::class, 'storeSimple'])->n
     Route::resource('vehicle-billing', VehicleBillingController::class);
     Route::post('/vehicle-billing/{vehicleBill}/finalize', [VehicleBillingController::class, 'finalize'])->name('vehicle-billing.finalize');
     Route::get('/vehicle-billing/{vehicleBill}/print', [VehicleBillingController::class, 'print'])->name('vehicle-billing.print');
+    Route::get('/vehicle-billing/{vehicleBill}/export/word', [VehicleBillingController::class, 'exportWord'])->name('vehicle-billing.export-word');
     Route::get('/vehicle-billing/data', [VehicleBillingController::class, 'getBillingData'])->name('vehicle-billing.data');
 
     // Reports

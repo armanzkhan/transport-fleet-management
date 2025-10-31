@@ -221,4 +221,116 @@ class VehicleBillingController extends Controller
             'expense_entries' => $expenseEntries,
         ]);
     }
+
+    public function exportWord(VehicleBill $vehicleBill)
+    {
+        $this->authorize('view-vehicle-billing');
+        
+        $vehicleBill->load(['vehicle.owner', 'creator']);
+        
+        // Get related entries
+        $freightEntries = JourneyVoucher::where('vehicle_id', $vehicleBill->vehicle_id)
+            ->where('is_billed', true)
+            ->where('billing_month', $vehicleBill->billing_month)
+            ->get();
+            
+        $advanceEntries = CashBook::where('vehicle_id', $vehicleBill->vehicle_id)
+            ->where('payment_type', 'Advance')
+            ->where('entry_date', '>=', $vehicleBill->billing_month . '-01')
+            ->where('entry_date', '<=', Carbon::parse($vehicleBill->billing_month . '-01')->endOfMonth())
+            ->get();
+            
+        $expenseEntries = CashBook::where('vehicle_id', $vehicleBill->vehicle_id)
+            ->where('payment_type', 'Expense')
+            ->where('entry_date', '>=', $vehicleBill->billing_month . '-01')
+            ->where('entry_date', '<=', Carbon::parse($vehicleBill->billing_month . '-01')->endOfMonth())
+            ->get();
+
+        $printService = new \App\Services\PrintExportService();
+        $printInfo = $printService->getPrintInfo($vehicleBill);
+        
+        // Prepare data for export
+        $data = [
+            [
+                'field' => 'Bill Number',
+                'value' => $vehicleBill->bill_number
+            ],
+            [
+                'field' => 'Vehicle (VRN)',
+                'value' => $vehicleBill->vehicle->vrn ?? 'N/A'
+            ],
+            [
+                'field' => 'Owner',
+                'value' => $vehicleBill->vehicle->owner->name ?? 'N/A'
+            ],
+            [
+                'field' => 'Billing Month',
+                'value' => $vehicleBill->billing_month
+            ],
+            [
+                'field' => 'Total Freight',
+                'value' => '₨' . number_format($vehicleBill->total_freight, 2)
+            ],
+            [
+                'field' => 'Total Advance',
+                'value' => '₨' . number_format($vehicleBill->total_advance, 2)
+            ],
+            [
+                'field' => 'Total Expense',
+                'value' => '₨' . number_format($vehicleBill->total_expense, 2)
+            ],
+            [
+                'field' => 'Total Shortage',
+                'value' => '₨' . number_format($vehicleBill->total_shortage, 2)
+            ],
+            [
+                'field' => 'Gross Profit',
+                'value' => '₨' . number_format($vehicleBill->gross_profit, 2)
+            ],
+            [
+                'field' => 'Net Profit',
+                'value' => '₨' . number_format($vehicleBill->net_profit, 2)
+            ],
+            [
+                'field' => 'Previous Balance',
+                'value' => '₨' . number_format($vehicleBill->previous_bill_balance, 2)
+            ],
+            [
+                'field' => 'Total Vehicle Balance',
+                'value' => '₨' . number_format($vehicleBill->total_vehicle_balance, 2)
+            ],
+            [
+                'field' => 'Status',
+                'value' => $vehicleBill->is_finalized ? 'Finalized' : 'Draft'
+            ],
+            [
+                'field' => 'Printed By',
+                'value' => $printInfo['printed_by']
+            ],
+            [
+                'field' => 'Created By',
+                'value' => $printInfo['created_by']
+            ],
+            [
+                'field' => 'Print Date',
+                'value' => $printInfo['print_date']
+            ]
+        ];
+
+        $columns = [
+            'Field' => 'field',
+            'Value' => 'value'
+        ];
+
+        try {
+            $result = $printService->generateWord($data, 'Vehicle Bill - ' . $vehicleBill->bill_number, $columns);
+            
+            return response()->download($result['file'], $result['filename'], [
+                'Content-Type' => $result['mime']
+            ])->deleteFileAfterSend(true);
+        } catch (\Exception $e) {
+            return redirect()->back()
+                ->withErrors(['error' => 'Failed to export to Word: ' . $e->getMessage()]);
+        }
+    }
 }
