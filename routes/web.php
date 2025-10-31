@@ -147,7 +147,13 @@ Route::post('/cash-books/simple', [CashBookController::class, 'storeSimple'])->n
     Route::get('/cash-books/{cashBook}/print', [CashBookController::class, 'print'])->name('cash-books.print');
     Route::get('/cash-books/export/csv', [CashBookController::class, 'exportCSV'])->name('cash-books.export-csv');
     Route::get('/cash-books/export/html', [CashBookController::class, 'exportHTML'])->name('cash-books.export-html');
+    Route::get('/cash-books/export/word', [CashBookController::class, 'exportWord'])->name('cash-books.export-word');
     Route::resource('cash-books', CashBookController::class);
+
+    // Audit Logs
+    Route::get('/audit-logs', [App\Http\Controllers\AuditLogController::class, 'index'])->name('audit-logs.index');
+    Route::get('/audit-logs/{auditLog}', [App\Http\Controllers\AuditLogController::class, 'show'])->name('audit-logs.show');
+    Route::get('/audit-logs/export', [App\Http\Controllers\AuditLogController::class, 'export'])->name('audit-logs.export');
 
     // Journey Vouchers - Specific routes first to avoid conflicts with resource routes
     Route::get('/journey-vouchers/primary', [JourneyVoucherController::class, 'primary'])->name('journey-vouchers.primary');

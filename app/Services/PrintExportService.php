@@ -138,17 +138,94 @@ class PrintExportService
     }
 
     /**
+     * Generate Word export
+     */
+    public function generateWord($data, $title, $columns, $filename = null)
+    {
+        $user = Auth::user();
+        $filename = $filename ?: $title . '_' . now()->format('Y-m-d_H-i-s') . '.docx';
+        
+        try {
+            $phpWord = new \PhpOffice\PhpWord\PhpWord();
+            $section = $phpWord->addSection();
+            
+            // Add title
+            $section->addText($title, ['bold' => true, 'size' => 16], ['alignment' => \PhpOffice\PhpWord\SimpleType\Jc::CENTER]);
+            $section->addTextBreak(1);
+            
+            // Add print information
+            $section->addText('Printed by: ' . $user->name . ' (ID: ' . $user->id . ')', ['size' => 10]);
+            $section->addText('Print Date: ' . now()->format('Y-m-d H:i:s'), ['size' => 10]);
+            
+            // Get created by info if available
+            if (isset($data[0]) && is_object($data[0]) && isset($data[0]->creator)) {
+                $createdBy = $data[0]->creator->name ?? 'System';
+                $section->addText('Created by: ' . $createdBy, ['size' => 10]);
+            }
+            
+            $section->addTextBreak(1);
+            
+            // Create table
+            $table = $section->addTable(['borderSize' => 6, 'borderColor' => '000000']);
+            
+            // Add header row
+            $table->addRow();
+            foreach ($columns as $column) {
+                $table->addCell(2000)->addText($column, ['bold' => true]);
+            }
+            
+            // Add data rows
+            foreach ($data as $item) {
+                $table->addRow();
+                foreach ($columns as $key => $column) {
+                    $value = is_array($item) ? ($item[$key] ?? '') : ($item->$key ?? '');
+                    $table->addCell(2000)->addText((string)$value);
+                }
+            }
+            
+            // Save to temporary file
+            $tempFile = tempnam(sys_get_temp_dir(), 'export_') . '.docx';
+            $objWriter = \PhpOffice\PhpWord\IOFactory::createWriter($phpWord, 'Word2007');
+            $objWriter->save($tempFile);
+            
+            return [
+                'file' => $tempFile,
+                'filename' => $filename,
+                'mime' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            ];
+        } catch (\Exception $e) {
+            \Log::error('Word export failed: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
      * Get print info for any record
      */
     public function getPrintInfo($record)
     {
         $user = Auth::user();
+        
+        // Get created by user info
+        $createdBy = 'System';
+        $createdByUser = null;
+        if (isset($record->creator)) {
+            $createdByUser = $record->creator;
+            $createdBy = $createdByUser->name . ' (ID: ' . $createdByUser->id . ')';
+        } elseif (isset($record->created_by)) {
+            $createdByUser = \App\Models\User::find($record->created_by);
+            if ($createdByUser) {
+                $createdBy = $createdByUser->name . ' (ID: ' . $createdByUser->id . ')';
+            }
+        }
+        
         return [
             'printed_by' => $user->name,
             'printed_by_id' => $user->id,
             'print_date' => now()->format('Y-m-d H:i:s'),
-            'created_by' => $record->created_by ?? 'System',
-            'created_date' => $record->created_at->format('Y-m-d H:i:s') ?? 'N/A',
+            'created_by' => $createdBy,
+            'created_by_id' => $createdByUser ? $createdByUser->id : null,
+            'created_date' => isset($record->created_at) ? $record->created_at->format('Y-m-d H:i:s') : 'N/A',
         ];
     }
 }

@@ -210,29 +210,122 @@ class ReportController extends Controller
         
         $dateFrom = $request->get('date_from', now()->startOfMonth());
         $dateTo = $request->get('date_to', now()->endOfMonth());
+        $companyFilter = $request->get('company');
+        $vrnFilter = $request->get('vrn');
         
-        // Freight Difference Income
-        $freightDifference = JourneyVoucher::whereBetween('journey_date', [$dateFrom, $dateTo])
-            ->whereRaw('company_freight_rate > vehicle_freight_rate')
-            ->selectRaw('SUM((company_freight_rate - vehicle_freight_rate) * decant_capacity) as total_income')
+        // Freight Difference Income - when company rate > vehicle rate
+        $freightDifferenceQuery = JourneyVoucher::whereBetween('journey_date', [$dateFrom, $dateTo])
+            ->whereNotNull('vehicle_freight_rate')
+            ->whereRaw('company_freight_rate > vehicle_freight_rate');
+        
+        if ($companyFilter) {
+            $freightDifferenceQuery->where('company', $companyFilter);
+        }
+        
+        if ($vrnFilter) {
+            $freightDifferenceQuery->whereHas('vehicle', function($q) use ($vrnFilter) {
+                $q->where('vrn', 'like', '%' . $vrnFilter . '%');
+            });
+        }
+        
+        $freightDifference = $freightDifferenceQuery
+            ->selectRaw('SUM((company_freight_rate - vehicle_freight_rate) * COALESCE(decant_capacity, capacity)) as total_income')
+            ->selectRaw('COUNT(*) as transaction_count')
             ->first();
         
-        // Shortage Difference Income (using shortage_rate as base rate)
-        $shortageDifference = JourneyVoucher::whereBetween('journey_date', [$dateFrom, $dateTo])
-            ->where('shortage_rate', '>', 0)
-            ->selectRaw('SUM(shortage_rate * shortage_quantity) as total_income')
+        // Shortage Difference Income - shortage amounts
+        $shortageDifferenceQuery = JourneyVoucher::whereBetween('journey_date', [$dateFrom, $dateTo])
+            ->where('shortage_quantity', '>', 0);
+        
+        if ($companyFilter) {
+            $shortageDifferenceQuery->where('company', $companyFilter);
+        }
+        
+        if ($vrnFilter) {
+            $shortageDifferenceQuery->whereHas('vehicle', function($q) use ($vrnFilter) {
+                $q->where('vrn', 'like', '%' . $vrnFilter . '%');
+            });
+        }
+        
+        $shortageDifference = $shortageDifferenceQuery
+            ->selectRaw('SUM(shortage_amount) as total_income')
+            ->selectRaw('SUM(shortage_quantity) as total_quantity')
+            ->selectRaw('COUNT(*) as transaction_count')
             ->first();
         
-        // Company-wise Income
-        $companyIncome = JourneyVoucher::whereBetween('journey_date', [$dateFrom, $dateTo])
+        // Company-wise Income Summary
+        $companyIncomeQuery = JourneyVoucher::whereBetween('journey_date', [$dateFrom, $dateTo]);
+        
+        if ($vrnFilter) {
+            $companyIncomeQuery->whereHas('vehicle', function($q) use ($vrnFilter) {
+                $q->where('vrn', 'like', '%' . $vrnFilter . '%');
+            });
+        }
+        
+        $companyIncome = $companyIncomeQuery
             ->select('company')
             ->selectRaw('SUM(commission_amount) as commission_income')
-            ->selectRaw('SUM((company_freight_rate - COALESCE(vehicle_freight_rate, company_freight_rate)) * decant_capacity) as freight_difference')
-            ->selectRaw('SUM(shortage_rate * shortage_quantity) as shortage_difference')
+            ->selectRaw('SUM(CASE WHEN company_freight_rate > COALESCE(vehicle_freight_rate, 0) THEN (company_freight_rate - COALESCE(vehicle_freight_rate, company_freight_rate)) * COALESCE(decant_capacity, capacity) ELSE 0 END) as freight_difference')
+            ->selectRaw('SUM(shortage_amount) as shortage_income')
+            ->selectRaw('COUNT(*) as trip_count')
             ->groupBy('company')
+            ->orderBy('company')
             ->get();
         
-        return view('reports.income-reports', compact('freightDifference', 'shortageDifference', 'companyIncome', 'dateFrom', 'dateTo'));
+        // Trip Munshiyana Income - from journey vouchers
+        $tripMunshiyanaQuery = JourneyVoucher::whereBetween('journey_date', [$dateFrom, $dateTo])
+            ->whereNotNull('trip_munshiyana')
+            ->where('trip_munshiyana', '>', 0);
+        
+        if ($companyFilter) {
+            $tripMunshiyanaQuery->where('company', $companyFilter);
+        }
+        
+        if ($vrnFilter) {
+            $tripMunshiyanaQuery->whereHas('vehicle', function($q) use ($vrnFilter) {
+                $q->where('vrn', 'like', '%' . $vrnFilter . '%');
+            });
+        }
+        
+        $tripMunshiyana = $tripMunshiyanaQuery
+            ->selectRaw('SUM(trip_munshiyana) as total_income')
+            ->selectRaw('COUNT(*) as transaction_count')
+            ->first();
+        
+        // Bill Munshiyana Income - from vehicle bills  
+        $billMunshiyanaQuery = VehicleBill::whereBetween('billing_month', [$dateFrom, $dateTo])
+            ->whereNotNull('bill_munshiyana')
+            ->where('bill_munshiyana', '>', 0);
+        
+        if ($vrnFilter) {
+            $billMunshiyanaQuery->whereHas('vehicle', function($q) use ($vrnFilter) {
+                $q->where('vrn', 'like', '%' . $vrnFilter . '%');
+            });
+        }
+        
+        $billMunshiyana = $billMunshiyanaQuery
+            ->selectRaw('SUM(bill_munshiyana) as total_income')
+            ->selectRaw('COUNT(*) as transaction_count')
+            ->first();
+        
+        // Get companies for filter dropdown
+        $companies = JourneyVoucher::select('company')
+            ->distinct()
+            ->orderBy('company')
+            ->pluck('company');
+        
+        return view('reports.income-reports', compact(
+            'freightDifference',
+            'shortageDifference',
+            'companyIncome',
+            'tripMunshiyana',
+            'billMunshiyana',
+            'dateFrom',
+            'dateTo',
+            'companyFilter',
+            'vrnFilter',
+            'companies'
+        ));
     }
 
     public function pendingTrips(Request $request)

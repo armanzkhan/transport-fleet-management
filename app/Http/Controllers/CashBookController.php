@@ -446,7 +446,11 @@ class CashBookController extends Controller
         // Log the action
         AuditLog::log('print', $cashBook);
         
-        return view('cash-books.print', compact('cashBook'));
+        // Get print information with user IDs
+        $printService = new PrintExportService();
+        $printInfo = $printService->getPrintInfo($cashBook);
+        
+        return view('cash-books.print', compact('cashBook', 'printInfo'));
     }
 
     public function simple()
@@ -691,5 +695,87 @@ class CashBookController extends Controller
         return response()->download($result['file'], $result['filename'], [
             'Content-Type' => $result['mime']
         ])->deleteFileAfterSend(true);
+    }
+
+    /**
+     * Export Cash Book to Word
+     */
+    public function exportWord(Request $request)
+    {
+        $this->authorize('view-cash-book');
+        
+        $query = CashBook::with(['account', 'vehicle', 'creator']);
+        
+        // Apply same filters as index
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function($q) use ($search) {
+                $q->where('description', 'like', "%{$search}%")
+                  ->orWhere('cash_book_number', 'like', "%{$search}%")
+                  ->orWhere('transaction_number', 'like', "%{$search}%");
+            });
+        }
+        
+        if ($request->filled('transaction_type')) {
+            $query->where('transaction_type', $request->transaction_type);
+        }
+        
+        if ($request->filled('date_from')) {
+            $query->whereDate('entry_date', '>=', $request->date_from);
+        }
+        
+        if ($request->filled('date_to')) {
+            $query->whereDate('entry_date', '<=', $request->date_to);
+        }
+        
+        if ($request->filled('vehicle_id')) {
+            $query->where('vehicle_id', $request->vehicle_id);
+        }
+        
+        if ($request->filled('payment_type')) {
+            $query->where('payment_type', $request->payment_type);
+        }
+        
+        $cashBooks = $query->orderBy('entry_date', 'desc')->get();
+        
+        $printService = new PrintExportService();
+        $columns = [
+            'Entry Date' => 'entry_date',
+            'Cash Book No' => 'cash_book_number',
+            'TRX Number' => 'transaction_number',
+            'Account' => 'account.account_name',
+            'Vehicle' => 'vehicle.vrn',
+            'Description' => 'description',
+            'Amount' => 'amount',
+            'Type' => 'transaction_type',
+            'Payment Type' => 'payment_type',
+            'Created By' => 'creator.name'
+        ];
+        
+        $exportData = $cashBooks->map(function($item) {
+            return [
+                'entry_date' => $item->entry_date->format('Y-m-d'),
+                'cash_book_number' => $item->cash_book_number,
+                'transaction_number' => $item->transaction_number,
+                'account_name' => $item->account->account_name ?? 'N/A',
+                'vehicle_vrn' => $item->vehicle->vrn ?? 'N/A',
+                'description' => $item->description,
+                'amount' => '₨' . number_format($item->amount, 2),
+                'transaction_type' => ucfirst($item->transaction_type),
+                'payment_type' => ucfirst($item->payment_type ?? 'N/A'),
+                'created_by' => $item->creator->name ?? 'System'
+            ];
+        });
+        
+        try {
+            $result = $printService->generateWord($exportData, 'Cash Book Export', $columns);
+            
+            return response()->download($result['file'], $result['filename'], [
+                'Content-Type' => $result['mime']
+            ])->deleteFileAfterSend(true);
+        } catch (\Exception $e) {
+            return redirect()->back()
+                ->withErrors(['error' => 'Failed to export to Word: ' . $e->getMessage()]);
+        }
     }
 }
